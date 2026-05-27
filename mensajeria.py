@@ -11,6 +11,30 @@ from datetime import datetime
 
 MAX_LARGO_MENSAJE = 255
 
+# =========================
+# RECIBIR TCP
+# =========================
+def recibir(sock):
+# Recibe datos via sock hasta recibir el delimitador "\r\n"
+# Reensambla el mensaje y lo retorna
+    buf = ""
+
+    while True:
+        data = sock.recv(1024)
+        buf += data.decode('utf-8')
+        if "\r\n" in buf:     # espera el mensaje "entero"
+            break
+
+    return buf.removesuffix("\r\n")
+# Fin recibir
+
+
+# =========================
+#  ENVIAR TCP
+# =========================
+def enviar(sock, msg):
+    sock.send(msg.encode('utf-8'))
+
 
 # =========================
 # AUTENTICACION
@@ -19,21 +43,20 @@ def autenticar(ip_auth, puerto_auth):
     usuario = input("Usuario: ")
     clave = input("Clave: ")
 
-    md5 = hashlib.md5(clave.encode()).hexdigest()
-
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((ip_auth, puerto_auth))
 
-    # banner
-    print(sock.recv(1024).decode())
+    respuesta = recibir(sock)
+    if respuesta != "Redes 2026 - Laboratorio - Autenticacion de Usuarios":
+        print("ERROR: Protocolo de autenticacion incorrecto.\n")
+        sys.exit(1)
 
-    mensaje = f"{usuario}-{md5}\r\n"
-    sock.send(mensaje.encode())
+    md5 = hashlib.md5(clave.encode('utf-8')).hexdigest()
+    enviar(sock, f"{usuario}-{md5}\r\n")
 
-    respuesta = sock.recv(1024).decode().strip()
-
+    respuesta = recibir(sock)
     if respuesta == "SI":
-        nombre = sock.recv(1024).decode().strip()
+        nombre = recibir(sock)
         print(f"Bienvenido {nombre}")
         sock.close()
         return usuario
