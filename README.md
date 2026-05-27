@@ -25,27 +25,16 @@ El programa permite:
 # Ejecución
 
 ```bash
-python mensajeria.py
-```
-
-Luego ingresar:
-
-```text
-Puerto local
-IP servidor autenticación
-Puerto servidor autenticación
+python mensajeria.py port ipAuth portAuth
 ```
 
 Ejemplo:
 
-```text
-Puerto local: 22764
-IP auth: ti.esi.edu.uy
-Puerto auth: 33
+```bash
+python mensajeria.py 22764 ti.esi.edu.uy 33
 ```
 
 ---
-
 # Autenticación
 
 El programa solicita:

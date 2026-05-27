@@ -6,6 +6,7 @@ import socket
 import threading
 import hashlib
 import os
+import sys
 from datetime import datetime
 
 MAX_LARGO_MENSAJE = 255
@@ -118,10 +119,13 @@ def enviar_archivo(sock, usuario, destino, puerto, path):
 # MAIN
 # =========================
 def main():
+    if len(sys.argv) < 4:
+        print(" Error: faltan argumentos. Uso: mensajeria.py port ipAuth portAuth)")
+        sys.exit(1)
 
-    puerto = int(input("Puerto local: "))
-    ip_auth = input("IP auth: ")
-    puerto_auth = int(input("Puerto auth: "))
+    puerto = int(sys.argv[1])
+    ip_auth = sys.argv[2]
+    puerto_auth = int(sys.argv[3])
 
     usuario = autenticar(ip_auth, puerto_auth)
 
