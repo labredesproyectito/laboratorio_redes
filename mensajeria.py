@@ -1,5 +1,4 @@
 # mensajeria.py
-# Proyecto MINIMO y SIMPLE para el laboratorio de Redes
 # Tecnólogo en Informática
 
 import socket
@@ -7,16 +6,17 @@ import threading
 import hashlib
 import os
 import sys
+from getpass import getpass
 from datetime import datetime
 
 MAX_LARGO_MENSAJE = 255
 
 # =========================
-# RECIBIR TCP
-# =========================
-def recibir(sock):
+# RECIBIR LINEA CRLF
 # Recibe datos via sock hasta recibir el delimitador "\r\n"
 # Reensambla el mensaje y lo retorna
+# =========================
+def recibir_linea_crlf(sock):
     buf = ""
 
     while True:
@@ -26,35 +26,45 @@ def recibir(sock):
             break
 
     return buf.removesuffix("\r\n")
-# Fin recibir
+
 
 # =========================
-#  ENVIAR TCP
+# RECIBIR CABECERA ARCHIVO
+# Recibe datos via sock hasta encontrar el delimitador "\r\n"
+# Reensambla la cabecera del archivo y devuelve también los bytes restantes
+# que ya pueden pertenecer al contenido del archivo
 # =========================
-def enviar(sock, msg):
-    sock.send(msg.encode('utf-8'))
+def recibir_cabecera_archivo(sock):
+    data = b""
+
+    while b"\r\n" not in data:
+        data += sock.recv(4096)
+
+    linea, resto = data.split(b"\r\n", 1)
+    return linea.decode('utf-8'), resto
+
 
 # =========================
 # AUTENTICACION
 # =========================
 def autenticar(ip_auth, puerto_auth):
     usuario = input("Usuario: ")
-    clave = input("Clave: ")
+    clave = getpass("Clave: ")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((ip_auth, puerto_auth))
 
-    respuesta = recibir(sock)
+    respuesta = recibir_linea_crlf(sock)
     if respuesta != "Redes 2026 - Laboratorio - Autenticacion de Usuarios":
         print("ERROR: Protocolo de autenticacion incorrecto.\n")
         sys.exit(1)
 
     md5 = hashlib.md5(clave.encode('utf-8')).hexdigest()
-    enviar(sock, f"{usuario}-{md5}\r\n")
+    sock.send(f"{usuario}-{md5}\r\n".encode('utf-8'))
 
-    respuesta = recibir(sock)
+    respuesta = recibir_linea_crlf(sock)
     if respuesta == "SI":
-        nombre = recibir(sock)
+        nombre = recibir_linea_crlf(sock)
         print(f"Bienvenido {nombre}")
         sock.close()
         return usuario
@@ -63,13 +73,11 @@ def autenticar(ip_auth, puerto_auth):
         sock.close()
         exit()
 
-# =========================
-# RECEPTOR
-# =========================
-def receptor(puerto):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("", puerto))
 
+# =========================
+# RECEPTOR UDP
+# =========================
+def receptor_udp(sock):
     while True:
         datos, addr = sock.recvfrom(65535)
 
@@ -87,50 +95,71 @@ def receptor(puerto):
 
                 print(f"\n[{fecha}] {addr[0]} {usuario} dice: {texto}")
 
-            # ARCHIVO
-            elif mensaje.startswith("FILE|"):
-                partes = mensaje.split("|", 3)
-
-                usuario = partes[1]
-                nombre = partes[2]
-                contenido = partes[3].encode("latin1")
-
-                with open(nombre, "wb") as f:
-                    f.write(contenido)
-
-                print(f"\n[{fecha}] {addr[0]} <Recibido {nombre} de {usuario}>")
-
         except:
             print("Error recibiendo datos")
 
-# =========================
-# ENVIAR MENSAJE
-# =========================
-def enviar_mensaje(sock, usuario, destino, puerto, texto):
 
-    mensaje = f"MSG|{usuario}|{texto}"
+# =========================
+# RECEPTOR TCP
+# =========================
+def receptor_tcp(sock):
+    while True:
+        conn, addr = sock.accept()
+        threading.Thread(target=recibir_archivo, args=(conn, addr), daemon=True).start()
 
-    sock.sendto(mensaje.encode(), (destino, puerto))
+
+
+# =========================
+# RECIBIR ARCHIVO
+# =========================
+def recibir_archivo(conn, addr):
+    cabereca, resto = recibir_cabecera_archivo(conn)
+
+    usuario, nombre, tamanio = cabereca.split("|")
+    tamanio = int(tamanio)
+    origen = addr[0]
+
+    bytes_recibidos = 0
+    with open(nombre, "wb") as f:
+        if resto:
+            f.write(resto)
+            bytes_recibidos = len(resto)
+
+        while bytes_recibidos < tamanio:
+            datos = conn.recv(4096)
+            if not datos:
+                break
+
+            f.write(datos)
+            bytes_recibidos += len(datos)
+
+    conn.close()
+
+    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
+
+    if bytes_recibidos == tamanio:
+        print(f"\n[{fecha}] {origen} <Recibido {nombre} de {usuario}>")
+    else:
+        print(f"\n[{fecha}] {origen} <Error Recibiendo Archivo de {usuario}>")
+
 
 # =========================
 # ENVIAR ARCHIVO
 # =========================
-def enviar_archivo(sock, usuario, destino, puerto, path):
-
-    if not os.path.exists(path):
-        print("Archivo no encontrado")
-        return
-
+def enviar_archivo(usuario, destino, puerto, path):
     nombre = os.path.basename(path)
+    tamanio = os.path.getsize(path)
 
-    with open(path, "rb") as f:
-        contenido = f.read()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect((destino, puerto))
 
-    mensaje = f"FILE|{usuario}|{nombre}|".encode() + contenido
+    sock.send(f"{usuario}|{nombre}|{tamanio}\r\n".encode('utf-8'))
 
-    sock.sendto(mensaje, (destino, puerto))
+    with open(nombre, 'rb') as f:
+        sock.sendfile(f)
 
-    print("Archivo enviado")
+    sock.close()
+
 
 # =========================
 # MAIN
@@ -146,21 +175,21 @@ def main():
 
     usuario = autenticar(ip_auth, puerto_auth)
 
-    # socket emisor UDP
-    sock_envio = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # socket receptor UDP
+    socket_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    socket_udp.bind(("", puerto))
+    socket_udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-    # broadcast
-    sock_envio.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    # socket receptor TCP
+    socket_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    socket_tcp.bind(("0.0.0.0", puerto))
+    socket_tcp.listen()
 
-    # hilo receptor
-    hilo = threading.Thread(target=receptor, args=(puerto,))
-    hilo.daemon = True
-    hilo.start()
-
-    print("Mensajeria iniciada")
+    # hilos receptores
+    threading.Thread(target=receptor_udp, args=(socket_udp,), daemon=True).start()
+    threading.Thread(target=receptor_tcp, args=(socket_tcp,), daemon=True).start()
 
     while True:
-
         entrada = input()
 
         if " " not in entrada:
@@ -168,13 +197,8 @@ def main():
 
         destino, contenido = entrada.split(" ", 1)
 
-        # broadcast
-        if destino == "*":
-            destino = "255.255.255.255"
-
         # archivo
         if contenido.startswith("&file"):
-
             partes = contenido.split(" ", 1)
 
             if len(partes) < 2:
@@ -182,29 +206,22 @@ def main():
                 continue
 
             path = partes[1]
+            if not os.path.exists(path):
+                print("Archivo no encontrado")
+                continue
 
-            enviar_archivo(
-                sock_envio,
-                usuario,
-                destino,
-                puerto,
-                path
-            )
-
+            enviar_archivo(usuario, destino, puerto, path)
         # mensaje normal
         else:
+            # broadcast
+            if destino == "*":
+                destino = "255.255.255.255"
 
             if len(contenido) > MAX_LARGO_MENSAJE:
                 print("Mensaje demasiado largo")
                 continue
 
-            enviar_mensaje(
-                sock_envio,
-                usuario,
-                destino,
-                puerto,
-                contenido
-            )
+            socket_udp.sendto(f"MSG|{usuario}|{contenido}".encode(), (destino, puerto))
 
 
 if __name__ == "__main__":
