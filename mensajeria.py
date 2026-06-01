@@ -28,13 +28,11 @@ def recibir(sock):
     return buf.removesuffix("\r\n")
 # Fin recibir
 
-
 # =========================
 #  ENVIAR TCP
 # =========================
 def enviar(sock, msg):
     sock.send(msg.encode('utf-8'))
-
 
 # =========================
 # AUTENTICACION
@@ -64,7 +62,6 @@ def autenticar(ip_auth, puerto_auth):
         print("Usuario o clave incorrectos")
         sock.close()
         exit()
-
 
 # =========================
 # RECEPTOR
@@ -106,7 +103,6 @@ def receptor(puerto):
         except:
             print("Error recibiendo datos")
 
-
 # =========================
 # ENVIAR MENSAJE
 # =========================
@@ -115,7 +111,6 @@ def enviar_mensaje(sock, usuario, destino, puerto, texto):
     mensaje = f"MSG|{usuario}|{texto}"
 
     sock.sendto(mensaje.encode(), (destino, puerto))
-
 
 # =========================
 # ENVIAR ARCHIVO
@@ -136,7 +131,6 @@ def enviar_archivo(sock, usuario, destino, puerto, path):
     sock.sendto(mensaje, (destino, puerto))
 
     print("Archivo enviado")
-
 
 # =========================
 # MAIN
