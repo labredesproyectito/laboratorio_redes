@@ -1,220 +1,212 @@
-# mensajeria.py
-# Proyecto MINIMO y SIMPLE para el laboratorio de Redes
-# Tecnólogo en Informática
-
 import socket
 import threading
 import hashlib
 import os
 import sys
 from datetime import datetime
+import argparse
+import base64
+
+parser = argparse.ArgumentParser()
+parser.add_argument("puerto", type=int)
+parser.add_argument("ipAuth")
+parser.add_argument("portAuth", type=int)
+args = parser.parse_args()
 
 MAX_LARGO_MENSAJE = 255
 
-# =========================
-# RECIBIR TCP
-# =========================
-def recibir(sock):
-# Recibe datos via sock hasta recibir el delimitador "\r\n"
-# Reensambla el mensaje y lo retorna
-    buf = ""
+
+def autenticador():
 
     while True:
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        sock.connect((args.ipAuth, args.portAuth))
+
         data = sock.recv(1024)
-        buf += data.decode('utf-8')
-        if "\r\n" in buf:     # espera el mensaje "entero"
-            break
+        print(data.decode())
 
-    return buf.removesuffix("\r\n")
-# Fin recibir
+        nombre = input("Escribe tu nombre: ")
+        contraseña = input("Escribe tu contraseña: ")
 
+        mensaje = f"{nombre}-{contraseña}"
 
-# =========================
-#  ENVIAR TCP
-# =========================
-def enviar(sock, msg):
-    sock.send(msg.encode('utf-8'))
+        sock.sendall((mensaje + "\r\n").encode("utf-8"))
 
+        print(mensaje)
 
-# =========================
-# AUTENTICACION
-# =========================
-def autenticar(ip_auth, puerto_auth):
-    usuario = input("Usuario: ")
-    clave = input("Clave: ")
+        data = sock.recv(1024).decode().strip()
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((ip_auth, puerto_auth))
+        print(data)
 
-    respuesta = recibir(sock)
-    if respuesta != "Redes 2026 - Laboratorio - Autenticacion de Usuarios":
-        print("ERROR: Protocolo de autenticacion incorrecto.\n")
-        sys.exit(1)
+        if data == "SI":
+            print(f"Bienvenido {nombre}")
+            sock.close()
+            return nombre
 
-    md5 = hashlib.md5(clave.encode('utf-8')).hexdigest()
-    enviar(sock, f"{usuario}-{md5}\r\n")
-
-    respuesta = recibir(sock)
-    if respuesta == "SI":
-        nombre = recibir(sock)
-        print(f"Bienvenido {nombre}")
-        sock.close()
-        return usuario
-    else:
         print("Usuario o clave incorrectos")
         sock.close()
-        exit()
 
 
-# =========================
-# RECEPTOR
-# =========================
-def receptor(puerto):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("", puerto))
+def parsear(texto):
 
-    while True:
-        datos, addr = sock.recvfrom(65535)
+    partes = texto.split()
 
-        try:
-            mensaje = datos.decode()
+    ip = partes[0]
 
-            fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
+    if len(partes) < 2:
+        return ip, None, None
 
-            # MENSAJE NORMAL
-            if mensaje.startswith("MSG|"):
-                partes = mensaje.split("|", 2)
+    if partes[1].startswith("&"):
 
-                usuario = partes[1]
-                texto = partes[2]
+        menj = partes[1]
+        path = partes[2] if len(partes) > 2 else None
 
-                print(f"\n[{fecha}] {addr[0]} {usuario} dice: {texto}")
+    else:
 
-            # ARCHIVO
-            elif mensaje.startswith("FILE|"):
-                partes = mensaje.split("|", 3)
+        menj = " ".join(partes[1:])
+        path = None
 
-                usuario = partes[1]
-                nombre = partes[2]
-                contenido = partes[3].encode("latin1")
-
-                with open(nombre, "wb") as f:
-                    f.write(contenido)
-
-                print(f"\n[{fecha}] {addr[0]} <Recibido {nombre} de {usuario}>")
-
-        except:
-            print("Error recibiendo datos")
+    return ip, menj, path
 
 
-# =========================
-# ENVIAR MENSAJE
-# =========================
-def enviar_mensaje(sock, usuario, destino, puerto, texto):
+def conectar_tcp(ip, puerto):
 
-    mensaje = f"MSG|{usuario}|{texto}"
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    sock.sendto(mensaje.encode(), (destino, puerto))
+    try:
+        sock.connect((ip, puerto))
+        return sock
+
+    except:
+        print(f"No fue posible conectar con {ip}:{puerto}")
+        sock.close()
+        return False
 
 
-# =========================
-# ENVIAR ARCHIVO
-# =========================
-def enviar_archivo(sock, usuario, destino, puerto, path):
+def envio(mensaje, ip):
 
-    if not os.path.exists(path):
-        print("Archivo no encontrado")
+    datos = mensaje.encode("utf-8")
+
+    if ip == "*":
+
+        broad_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        broad_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+    else:
+
+        sock = conectar_tcp(ip, args.puerto)
+
+        if not sock:
+            return
+
+    i = 0
+
+    while i < len(datos):
+
+        bloque = datos[i:i + 255]
+
+        if ip == "*":
+            broad_sock.sendto(bloque.encode("utf-8"),("255.255.255.255", args.puerto)
+            )
+        else:
+            sock.sendall(bloque.encode("utf-8"))
+
+        i += 255
+
+    print(f"enviado a {ip}")
+
+    if ip == "*":
+        broad_sock.close()
+    else:
+        sock.close()
+
+
+def enviar_mensaje(nombre):
+
+    mensaje = input("introduzeca mensaje: ")
+
+    (ip, menj, path) = parsear(mensaje)
+
+    if path is not None:
+        real_path=path
+        with open(path, "r", encoding="utf-8") as f:
+            path = f.read()
+            path = base64.b64encode(path).decode("utf-8")
+            menj = menj + " " + real_path + " " + path
+
+    if menj is None:
         return
 
-    nombre = os.path.basename(path)
+    menj = ip + " " + nombre + " " +  + menj + "\r\n"
 
-    with open(path, "rb") as f:
-        contenido = f.read()
-
-    mensaje = f"FILE|{usuario}|{nombre}|".encode() + contenido
-
-    sock.sendto(mensaje, (destino, puerto))
-
-    print("Archivo enviado")
+    envio(menj, ip)
 
 
-# =========================
-# MAIN
-# =========================
+
+
+def manejar(data_bytes: bytes):
+    try:
+        data = data_bytes.decode("utf-8")
+    except:
+        print("error no se puede decodear?")
+        return False
+    data = data.rstrip("\r\n")
+    partes = data.split(" ", 2)
+
+    if len(partes) < 3:
+        return False
+
+    ip = partes[0]
+    nombre_remitante = partes[1]
+    segundo = partes[2]
+    automatico= fecha + ip + " "
+
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if segundo == "&file":
+        real_path=partes[3]
+        if len(partes) < 5:
+            print(automatico + "<Error Recibiendo Archivo de " + nombre_remitante + " ")
+            return False
+
+        b64_data = partes[4]
+
+        try:
+            archivo_bytes = base64.b64decode(b64_data)
+        except:
+            print(automatico + "<Error Recibiendo Archivo de " + nombre_remitante)
+            return False
+
+        nombre = f"{ip}_file.bin"
+
+        with open(nombre, "wb") as f:
+            f.write(archivo_bytes)
+        print(automatico + "Recibiendo " + real_path + " de " + nombre_remitante)
+
+        return True
+
+  
+    
+
+    nombre_archivo = f"{ip}.txt"
+
+    with open(nombre_archivo, "a", encoding="utf-8") as f:
+        f.write(data + "\n")
+    print(automatico + nombre_remitante + "dice " + segundo)
+
+    return True
+
 def main():
-    if len(sys.argv) < 4:
-        print(" Error: faltan argumentos. Uso: mensajeria.py port ipAuth portAuth)")
-        sys.exit(1)
 
-    puerto = int(sys.argv[1])
-    ip_auth = sys.argv[2]
-    puerto_auth = int(sys.argv[3])
+    nombre = autenticador()
 
-    usuario = autenticar(ip_auth, puerto_auth)
-
-    # socket emisor UDP
-    sock_envio = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    # broadcast
-    sock_envio.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-
-    # hilo receptor
-    hilo = threading.Thread(target=receptor, args=(puerto,))
-    hilo.daemon = True
-    hilo.start()
-
-    print("Mensajeria iniciada")
+    print(f"Usuario autenticado: {nombre}")
 
     while True:
-
-        entrada = input()
-
-        if " " not in entrada:
-            continue
-
-        destino, contenido = entrada.split(" ", 1)
-
-        # broadcast
-        if destino == "*":
-            destino = "255.255.255.255"
-
-        # archivo
-        if contenido.startswith("&file"):
-
-            partes = contenido.split(" ", 1)
-
-            if len(partes) < 2:
-                print("Falta path")
-                continue
-
-            path = partes[1]
-
-            enviar_archivo(
-                sock_envio,
-                usuario,
-                destino,
-                puerto,
-                path
-            )
-
-        # mensaje normal
-        else:
-
-            if len(contenido) > MAX_LARGO_MENSAJE:
-                print("Mensaje demasiado largo")
-                continue
-
-            enviar_mensaje(
-                sock_envio,
-                usuario,
-                destino,
-                puerto,
-                contenido
-            )
+        enviar_mensaje()
 
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nCerrando sesión...")
+if __name__ == '__main__':
+    main()
