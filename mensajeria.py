@@ -197,16 +197,80 @@ def manejar(data_bytes: bytes):
     print(automatico + nombre_remitante + "dice " + segundo)
 
     return True
+def handler(data_bytes):
+    print("RECIBIDO:", data_bytes)
+    manejar(data_bytes)
+
+
+
+def broadcast_udp(host, port, handler):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind((host, port))
+
+    while True:
+        data = s.recv(255)
+        handler(data)
+def escucha_tcp(host, port, handler):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind((host, port))
+    s.listen()
+
+    while True:
+        conn, addr = s.accept()
+
+        threading.Thread(
+            target=manejar_cliente,args=(conn, addr, handler),daemon=True).start()
+
+def manejar_cliente(conn, handler):
+    buffer = b""
+
+    DELIM = b"\r\n\\"
+
+    while True:
+        try:
+            chunk = conn.recv(255)
+            if not chunk:
+                break
+
+            buffer += chunk
+
+           
+            while DELIM in buffer:
+                handler(buffer)
+
+        except:
+            break
+
+    conn.close()
+
+
+def iniciar_servidor(host, tcp_port, udp_port, handler):
+    threading.Thread(
+        target=escucha_tcp,args=(host, tcp_port, handler),daemon=True).start()
+
+    threading.Thread(
+        target=broadcast_udp,args=(host, udp_port, handler),daemon=True).start()
 
 def main():
 
     nombre = autenticador()
-
     print(f"Usuario autenticado: {nombre}")
+    host = "0.0.0.0"
 
+   
+
+    threading.Thread(
+        target=iniciar_servidor,args=(host, args.puerto, args.puerto, manejar),daemon=True).start()
+
+    print("Servidor de escucha iniciado")
+
+   
     while True:
         enviar_mensaje()
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nCerrando sesión...")
