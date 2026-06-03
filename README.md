@@ -25,7 +25,7 @@ python mensajeria.py <puerto_local> <ip_auth> <puerto_auth>
 Ejemplo:
 
 ```bash
-python mensajeria.py 22764 ti.esi.edu.uy 33
+python mensajeria.py 25555 ti.esi.edu.uy 33
 ```
 
 ## Autenticación
@@ -42,7 +42,7 @@ La clave se convierte a MD5 y se envía al servidor de autenticación. Si las cr
 Ejemplo:
 
 ```text
-./mensajeria 25555 tiesi.edu.yt 33
+./mensajeria 25555 ti.esi.edu.uy 33
 Usuario: aturing
 Clave: aturing
 Bienvenido Alan_Mathison_Turing
