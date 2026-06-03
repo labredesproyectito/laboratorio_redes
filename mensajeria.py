@@ -188,7 +188,7 @@ def enviar_archivo(usuario, destino, puerto, path, tamanio):
 
     with open(path, "rb") as f:
         while True:
-            chunk = f.read(8192)
+            chunk = f.read(65536)
             if not chunk:
                 break
 
