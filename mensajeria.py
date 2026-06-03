@@ -184,8 +184,14 @@ def enviar_archivo(usuario, destino, puerto, path, tamanio):
 
     sock.send(f"{usuario}|{nombre}|{tamanio}\r\n".encode('utf-8'))
 
-    with open(path, 'rb') as f:
-        sock.sendfile(f)
+
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(8192)
+            if not chunk:
+                break
+            
+            sock.sendall(chunk)
 
     sock.close()
 
