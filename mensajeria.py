@@ -156,7 +156,8 @@ def recibir_archivo(conn, addr):
             bytes_recibidos = len(resto)
 
         while bytes_recibidos < tamanio:
-            datos = conn.recv(4096)
+            faltan = tamanio - bytes_recibidos
+            datos = conn.recv(min(4096, faltan))
             if not datos:
                 break
 
@@ -190,7 +191,7 @@ def enviar_archivo(usuario, destino, puerto, path, tamanio):
             chunk = f.read(8192)
             if not chunk:
                 break
-            
+
             sock.sendall(chunk)
 
     sock.close()
