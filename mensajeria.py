@@ -108,10 +108,9 @@ def envio(mensaje, ip):
         bloque = datos[i:i + 255]
 
         if ip == "*":
-            broad_sock.sendto(bloque.encode("utf-8"),("255.255.255.255", args.puerto)
-            )
+            broad_sock.sendto(bloque,("255.255.255.255", args.puerto))
         else:
-            sock.sendall(bloque.encode("utf-8"))
+            sock.sendall(bloque)
 
         i += 255
 
@@ -130,16 +129,17 @@ def enviar_mensaje(nombre):
     (ip, menj, path) = parsear(mensaje)
 
     if path is not None:
-        real_path=path
+        
         with open(path, "r", encoding="utf-8") as f:
             path = f.read()
+            nombre_archivo = os.path.basename(nombre_archivo)
             path = base64.b64encode(path).decode("utf-8")
-            menj = menj + " " + real_path + " " + path
+            menj = menj + nombre_archivo + " " + path
 
     if menj is None:
         return
 
-    menj = ip + " " + nombre + " " +  + menj + "\r\n"
+    menj = ip + " " + nombre + " " + menj + "\r\n"
 
     envio(menj, ip)
 
@@ -148,56 +148,66 @@ def enviar_mensaje(nombre):
 
 def manejar(data_bytes: bytes):
     print("manejando....")
+
     try:
         data = data_bytes.decode("utf-8")
     except:
         print("error no se puede decodear?")
         return False
-    ##data = data.rstrip("\r\n")
-    partes = data.split(" ", 5)
 
-    if len(partes) < 3:
+    try:
+        ip, nombre, resto = data.split(" ", 2)
+    except ValueError:
         print("mensaje incompleto")
         return False
+
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ip = partes[0]
-    nombre_remitante = partes[1]
-    segundo = partes[2]
-    automatico= fecha + ip + " "
+    automatico = fecha + " " + ip + " "
 
+    if resto.startswith("&file "):
 
-    if segundo == "&file":
-        real_path=partes[3]
-        if len(partes) < 5:
-            print(automatico + "<Error Recibiendo Archivo de " + nombre_remitante + " ")
+        try:
+             nombre_archivo, b64_data = resto.split(" ", 2)
+        except ValueError:
+            print(automatico + "<Error Recibiendo Archivo de " + nombre)
             return False
 
-        b64_data = partes[4]
+        
 
         try:
             archivo_bytes = base64.b64decode(b64_data)
-        except:
-            print(automatico + "<Error Recibiendo Archivo de " + nombre_remitante)
+        except Exception as e:
+            print(automatico + "<Error Recibiendo Archivo de " + nombre)
+            print(e)
             return False
 
-        nombre = f"{ip}_file.bin"
+        
 
-        with open(nombre, "wb") as f:
+        with open(nombre_archivo, "wb") as f:
             f.write(archivo_bytes)
-        print(automatico + "Recibiendo " + real_path + " de " + nombre_remitante)
+
+        print(
+            automatico +
+            "Recibiendo " +
+            nombre_archivo +
+            " de " +
+            nombre
+        )
 
         return True
 
-  
-    
+    else:
 
-    nombre_archivo = f"{ip}.txt"
+        mensaje = resto
 
-    with open(nombre_archivo, "a", encoding="utf-8") as f:
-        f.write(data + "\n")
-    print(automatico + nombre_remitante + "dice " + segundo)
+        nombre_log = f"{ip}.txt"
 
-    return True
+        with open(nombre_log, "a", encoding="utf-8") as f:
+            f.write(data + "\n")
+
+        print(automatico + nombre + " dice: " + mensaje)
+
+        return True
 def handler(data_bytes):
     print("RECIBIDO:", data_bytes)
     manejar(data_bytes)
@@ -230,7 +240,7 @@ def manejar_cliente(conn, handler):
     print("reciviendo mensaje")
 
     DELIM = b"\r\n"
-    bip=0
+    
     while True:
         try:
             chunk = conn.recv(255)
@@ -239,13 +249,13 @@ def manejar_cliente(conn, handler):
                 break
 
             buffer += chunk
-            bip += 1
-            print(f"tomando del buffer, iteracion {bip}")
+            
 
            
             while DELIM in buffer:
                 mensaje, buffer = buffer.split(DELIM, 1)
                 print("mensaje recibido... procesando")
+                print("LONGITUD MENSAJE RECIBIDO:", len(mensaje))
                 handler(mensaje)
 
         except Exception as e:
