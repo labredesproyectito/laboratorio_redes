@@ -147,23 +147,24 @@ def enviar_mensaje(nombre):
 
 
 def manejar(data_bytes: bytes):
+    print("manejando....")
     try:
         data = data_bytes.decode("utf-8")
     except:
         print("error no se puede decodear?")
         return False
-    data = data.rstrip("\r\n")
-    partes = data.split(" ", 2)
+    ##data = data.rstrip("\r\n")
+    partes = data.split(" ", 5)
 
     if len(partes) < 3:
+        print("mensaje incompleto")
         return False
-
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     ip = partes[0]
     nombre_remitante = partes[1]
     segundo = partes[2]
     automatico= fecha + ip + " "
 
-    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if segundo == "&file":
         real_path=partes[3]
@@ -216,31 +217,42 @@ def escucha_tcp(host, port, handler):
     s.listen()
 
     while True:
+        print("Esperando conexión...")
         conn, addr = s.accept()
+        print(f"Cliente conectado desde {addr}")
+
 
         threading.Thread(
-            target=manejar_cliente,args=(conn, addr, handler),daemon=True).start()
+            target=manejar_cliente,args=(conn, handler),daemon=True).start()
 
 def manejar_cliente(conn, handler):
     buffer = b""
+    print("reciviendo mensaje")
 
-    DELIM = b"\r\n\\"
-
+    DELIM = b"\r\n"
+    bip=0
     while True:
         try:
             chunk = conn.recv(255)
             if not chunk:
+                print("no es un chunk, rompiendo")
                 break
 
             buffer += chunk
+            bip += 1
+            print(f"tomando del buffer, iteracion {bip}")
 
            
             while DELIM in buffer:
-                handler(buffer)
+                mensaje, buffer = buffer.split(DELIM, 1)
+                print("mensaje recibido... procesando")
+                handler(mensaje)
 
-        except:
+        except Exception as e:
+            print("conexion fallo")
+            print(e)
             break
-
+    
     conn.close()
 
 
@@ -266,7 +278,7 @@ def main():
 
    
     while True:
-        enviar_mensaje()
+        enviar_mensaje(nombre)
 
 
 if __name__ == "__main__":
