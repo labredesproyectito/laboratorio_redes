@@ -11,6 +11,8 @@ from datetime import datetime
 
 MAX_LARGO_MENSAJE = 255
 
+archivos_broadcast = {}
+
 # =========================
 # RECIBIR LINEA CRLF
 # Recibe datos via sock hasta recibir el delimitador "\r\n"
@@ -77,12 +79,12 @@ def autenticar(ip_auth, puerto_auth):
 # =========================
 # RECEPTOR UDP
 # =========================
-def receptor_udp(sock):
+def receptor_udp(sock, usuario, puerto):
     while True:
         datos, addr = sock.recvfrom(65535)
 
         try:
-            mensaje = datos.decode()
+            mensaje = datos.decode('utf-8').strip()
 
             fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
 
@@ -90,10 +92,38 @@ def receptor_udp(sock):
             if mensaje.startswith("MSG|"):
                 partes = mensaje.split("|", 2)
 
-                usuario = partes[1]
+                usuario_remitente  = partes[1]
                 texto = partes[2]
 
-                print(f"\n[{fecha}] {addr[0]} {usuario} dice: {texto}")
+                print(f"[{fecha}] {addr[0]} {usuario_remitente } dice: {texto}")
+            elif mensaje.startswith("FILE|"):
+                partes = mensaje.split("|", 3)
+
+                usuario_remitente = partes[1]
+                if usuario_remitente == usuario:
+                        continue
+
+                nombre = partes[2]
+                tamanio = int(partes[3])
+
+                ip_origen = addr[0]
+                puerto_origen = addr[1]
+
+                sock.sendto(f"GET_FILE|{usuario_remitente }|{nombre}|{tamanio}".encode('utf-8'), (ip_origen, puerto))
+            elif mensaje.startswith("GET_FILE|"):
+                partes = mensaje.split("|", 3)
+
+                usuario_remitente  = partes[1]
+                if usuario_remitente == usuario:
+                    nombre = partes[2]
+                    tamanio = int(partes[3])
+
+                    ip_origen = addr[0]
+                    puerto_origen = addr[1]
+
+                    path = archivos_broadcast.get(nombre)
+                    if path:
+                        enviar_archivo(usuario, ip_origen, puerto, path, tamanio)
 
         except:
             print("Error recibiendo datos")
@@ -138,24 +168,23 @@ def recibir_archivo(conn, addr):
     fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
 
     if bytes_recibidos == tamanio:
-        print(f"\n[{fecha}] {origen} <Recibido {nombre} de {usuario}>")
+        print(f"[{fecha}] {origen} <Recibido {nombre} de {usuario}>")
     else:
-        print(f"\n[{fecha}] {origen} <Error Recibiendo Archivo de {usuario}>")
+        print(f"[{fecha}] {origen} <Error Recibiendo Archivo de {usuario}>")
 
 
 # =========================
 # ENVIAR ARCHIVO
 # =========================
-def enviar_archivo(usuario, destino, puerto, path):
-    nombre = os.path.basename(path)
-    tamanio = os.path.getsize(path)
-
+def enviar_archivo(usuario, destino, puerto, path, tamanio):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((destino, puerto))
 
+    nombre = os.path.basename(path)
+
     sock.send(f"{usuario}|{nombre}|{tamanio}\r\n".encode('utf-8'))
 
-    with open(nombre, 'rb') as f:
+    with open(path, 'rb') as f:
         sock.sendfile(f)
 
     sock.close()
@@ -186,7 +215,7 @@ def main():
     socket_tcp.listen()
 
     # hilos receptores
-    threading.Thread(target=receptor_udp, args=(socket_udp,), daemon=True).start()
+    threading.Thread(target=receptor_udp, args=(socket_udp, usuario, puerto), daemon=True).start()
     threading.Thread(target=receptor_tcp, args=(socket_tcp,), daemon=True).start()
 
     while True:
@@ -196,6 +225,19 @@ def main():
             continue
 
         destino, contenido = entrada.split(" ", 1)
+
+        broadcast = destino == "*"
+
+        # broadcast
+        if broadcast:
+            destino = "255.255.255.255"
+        else:
+            try:
+                destino = socket.gethostbyname(destino)
+            except socket.gaierror:
+                print(" Error: Host no encontrado")
+                continue
+
 
         # archivo
         if contenido.startswith("&file"):
@@ -210,22 +252,25 @@ def main():
                 print("Archivo no encontrado")
                 continue
 
-            enviar_archivo(usuario, destino, puerto, path)
+            nombre = os.path.basename(path)
+            tamanio = os.path.getsize(path)
+
+            if broadcast:
+                archivos_broadcast[nombre] = path
+                socket_udp.sendto(f"FILE|{usuario}|{nombre}|{tamanio}".encode('utf-8'), (destino, puerto))
+            else:
+                enviar_archivo(usuario, destino, puerto, path, tamanio)
         # mensaje normal
         else:
-            # broadcast
-            if destino == "*":
-                destino = "255.255.255.255"
-
             if len(contenido) > MAX_LARGO_MENSAJE:
                 print("Mensaje demasiado largo")
                 continue
 
-            socket_udp.sendto(f"MSG|{usuario}|{contenido}".encode(), (destino, puerto))
+            socket_udp.sendto(f"MSG|{usuario}|{contenido}".encode('utf-8'), (destino, puerto))
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nCerrando sesión...")
+        print("Cerrando sesión...")
