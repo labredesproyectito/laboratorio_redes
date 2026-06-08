@@ -1,194 +1,116 @@
-# mensajeria.py
-# Tecnólogo en Informática
-
-import socket
-import threading
+import argparse
 import hashlib
 import os
+import socket
 import sys
-from getpass import getpass
+import threading
 from datetime import datetime
+from getpass import getpass
+
+parser = argparse.ArgumentParser()
+parser.add_argument("puerto", type=int)
+parser.add_argument("ipAuth")
+parser.add_argument("portAuth", type=int)
+args = parser.parse_args()
 
 MAX_LARGO_MENSAJE = 255
 
-archivos_broadcast = {}
 
-# =========================
-# RECIBIR LINEA CRLF
-# Recibe datos via sock hasta recibir el delimitador "\r\n"
-# Reensambla el mensaje y lo retorna
-# =========================
-def recibir_linea_crlf(sock):
-    buf = ""
-
+def recibir_linea_crlf(buffer, sock):
     while True:
         data = sock.recv(1024)
-        buf += data.decode('utf-8')
-        if "\r\n" in buf:     # espera el mensaje "entero"
+        if not data:
             break
 
-    return buf.removesuffix("\r\n")
+        buffer += data
 
+        if b"\r\n" in buffer:
+            break
 
-# =========================
-# RECIBIR CABECERA ARCHIVO
-# Recibe datos via sock hasta encontrar el delimitador "\r\n"
-# Reensambla la cabecera del archivo y devuelve también los bytes restantes
-# que ya pueden pertenecer al contenido del archivo
-# =========================
-def recibir_cabecera_archivo(sock):
-    data = b""
-
-    while b"\r\n" not in data:
-        data += sock.recv(4096)
-
-    linea, resto = data.split(b"\r\n", 1)
+    linea, resto = buffer.split(b"\r\n", 1)
     return linea.decode('utf-8'), resto
 
 
-# =========================
-# AUTENTICACION
-# =========================
-def autenticar(ip_auth, puerto_auth):
-    usuario = input("Usuario: ")
-    clave = getpass("Clave: ")
+def autenticador():
+    nombre = input("Usuario: ")
+    contrasenia = getpass("Clave: ")
+
+    buffer = b""
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((ip_auth, puerto_auth))
+    sock.connect((args.ipAuth, args.portAuth))
 
-    respuesta = recibir_linea_crlf(sock)
+    respuesta, buffer = recibir_linea_crlf(buffer, sock)
     if respuesta != "Redes 2026 - Laboratorio - Autenticacion de Usuarios":
         print("ERROR: Protocolo de autenticacion incorrecto.\n")
         sys.exit(1)
 
-    md5 = hashlib.md5(clave.encode('utf-8')).hexdigest()
-    sock.send(f"{usuario}-{md5}\r\n".encode('utf-8'))
+    md5 = hashlib.md5(contrasenia.encode('utf-8')).hexdigest()
+    mensaje = f"{nombre}-{md5}"
+    sock.sendall((mensaje + "\r\n").encode("utf-8"))
 
-    respuesta = recibir_linea_crlf(sock)
+    respuesta, buffer = recibir_linea_crlf(buffer, sock)
     if respuesta == "SI":
-        nombre = recibir_linea_crlf(sock)
-        print(f"Bienvenido {nombre}")
+        nombre_completo, buffer = recibir_linea_crlf(buffer, sock)
+        print(f"Bienvenido {nombre_completo}")
         sock.close()
-        return usuario
+        return nombre
     else:
         print("Usuario o clave incorrectos")
         sock.close()
         exit()
 
 
-# =========================
-# RECEPTOR UDP
-# =========================
-def receptor_udp(sock, usuario, puerto):
-    while True:
-        datos, addr = sock.recvfrom(65535)
-
-        try:
-            mensaje = datos.decode('utf-8').strip()
-
-            fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
-
-            # MENSAJE NORMAL
-            if mensaje.startswith("MSG|"):
-                partes = mensaje.split("|", 2)
-
-                usuario_remitente  = partes[1]
-                texto = partes[2]
-
-                print(f"[{fecha}] {addr[0]} {usuario_remitente } dice: {texto}")
-            elif mensaje.startswith("FILE|"):
-                partes = mensaje.split("|", 3)
-
-                usuario_remitente = partes[1]
-                if usuario_remitente == usuario:
-                        continue
-
-                nombre = partes[2]
-                tamanio = int(partes[3])
-
-                ip_origen = addr[0]
-                puerto_origen = addr[1]
-
-                sock.sendto(f"GET_FILE|{usuario_remitente }|{nombre}|{tamanio}".encode('utf-8'), (ip_origen, puerto))
-            elif mensaje.startswith("GET_FILE|"):
-                partes = mensaje.split("|", 3)
-
-                usuario_remitente  = partes[1]
-                if usuario_remitente == usuario:
-                    nombre = partes[2]
-                    tamanio = int(partes[3])
-
-                    ip_origen = addr[0]
-                    puerto_origen = addr[1]
-
-                    path = archivos_broadcast.get(nombre)
-                    if path:
-                        enviar_archivo(usuario, ip_origen, puerto, path, tamanio)
-
-        except:
-            print("Error recibiendo datos")
-
-
-# =========================
-# RECEPTOR TCP
-# =========================
-def receptor_tcp(sock):
-    while True:
-        conn, addr = sock.accept()
-        threading.Thread(target=recibir_archivo, args=(conn, addr), daemon=True).start()
-
-
-
-# =========================
-# RECIBIR ARCHIVO
-# =========================
-def recibir_archivo(conn, addr):
-    cabereca, resto = recibir_cabecera_archivo(conn)
-
-    usuario, nombre, tamanio = cabereca.split("|")
-    tamanio = int(tamanio)
-    origen = addr[0]
-
-    bytes_recibidos = 0
-    with open(nombre, "wb") as f:
-        if resto:
-            f.write(resto)
-            bytes_recibidos = len(resto)
-
-        while bytes_recibidos < tamanio:
-            faltan = tamanio - bytes_recibidos
-            datos = conn.recv(min(4096, faltan))
-            if not datos:
-                break
-
-            f.write(datos)
-            bytes_recibidos += len(datos)
-
-    conn.close()
-
-    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
-
-    if bytes_recibidos == tamanio:
-        print(f"[{fecha}] {origen} <Recibido {nombre} de {usuario}>")
-    else:
-        print(f"[{fecha}] {origen} <Error Recibiendo Archivo de {usuario}>")
-
-
-# =========================
-# ENVIAR ARCHIVO
-# =========================
-def enviar_archivo(usuario, destino, puerto, path, tamanio):
+def conectar_tcp(ip, puerto):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((destino, puerto))
 
-    nombre = os.path.basename(path)
+    ip = socket.gethostbyname(ip)
+    try:
+        sock.connect((ip, puerto))
+        return sock
 
-    sock.send(f"{usuario}|{nombre}|{tamanio}\r\n".encode('utf-8'))
+    except:
+        print(f"No fue posible conectar con {ip}:{puerto}")  # debug
+        sock.close()
+        return False
 
+
+def enviar_mensaje_udp_broadcast(sock, nombre_usuario, mensaje):
+    sock.sendto(f"BROADCAST|MENSAJE|{nombre_usuario}|{mensaje}\r\n".encode('utf-8'), ("255.255.255.255", args.puerto))
+    sock.close()
+
+
+def recibir_mensaje_udp_broadcast(ip_origen, nombre_usuario, mensaje):
+    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
+    print(f"[{fecha}] {ip_origen} {nombre_usuario} dice: {mensaje}")
+
+
+def enviar_archivo_udp_broadcast(sock, nombre_usuario, ruta_archivo):
+    sock.sendto(f"BROADCAST|ARCHIVO|{nombre_usuario}|{ruta_archivo}\r\n".encode('utf-8'), ("255.255.255.255", args.puerto))
+    sock.close()
+
+
+def enviar_mensaje_tcp(sock, nombre_usuario, mensaje):
+    sock.sendall(f"MENSAJE|{nombre_usuario}|{mensaje}\r\n".encode('utf-8'))
+    sock.close()
+
+
+def recibir_mensaje_tcp(sock, nombre_usuario, mensaje):
+    ip_origen, puerto = sock.getpeername()
+    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
+    print(f"[{fecha}] {ip_origen} {nombre_usuario} dice: {mensaje}")
+    sock.close()
+
+
+def enviar_archivo_tcp(sock, nombre_usuario, path):
+    nombre_archivo = os.path.basename(path)
+    tamanio_archivo = os.path.getsize(path)
+
+    sock.sendall(f"ARCHIVO|{nombre_usuario}|{nombre_archivo}|{tamanio_archivo}\r\n".encode('utf-8'))
 
     with open(path, "rb") as f:
         while True:
-            chunk = f.read(65536)
+            chunk = f.read(4096)  # Manda los bytes del archivo en chunks de 4kib
             if not chunk:
                 break
 
@@ -197,87 +119,189 @@ def enviar_archivo(usuario, destino, puerto, path, tamanio):
     sock.close()
 
 
-# =========================
-# MAIN
-# =========================
-def main():
-    if len(sys.argv) < 4:
-        print(" Error: faltan argumentos. Uso: mensajeria.py port ipAuth portAuth)")
-        sys.exit(1)
+def recibir_archivo_tcp(sock, usuario, nombre_archivo, tamanio_archivo, resto):
+    ip_origen, puerto = sock.getpeername()
 
-    puerto = int(sys.argv[1])
-    ip_auth = sys.argv[2]
-    puerto_auth = int(sys.argv[3])
+    bytes_recibidos = 0
+    with open(nombre_archivo, "wb") as f:
+        if resto:
+            bytes_recibidos += len(resto)
+            f.write(resto)
 
-    usuario = autenticar(ip_auth, puerto_auth)
+        while bytes_recibidos < tamanio_archivo:
+            faltan = tamanio_archivo - bytes_recibidos
+            datos = sock.recv(min(4096, faltan))
+            if not datos:
+                break
 
-    # socket receptor UDP
-    socket_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    socket_udp.bind(("", puerto))
-    socket_udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            f.write(datos)
+            bytes_recibidos += len(datos)
 
-    # socket receptor TCP
-    socket_tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    socket_tcp.bind(("0.0.0.0", puerto))
-    socket_tcp.listen()
+    sock.close()
 
-    # hilos receptores
-    threading.Thread(target=receptor_udp, args=(socket_udp, usuario, puerto), daemon=True).start()
-    threading.Thread(target=receptor_tcp, args=(socket_tcp,), daemon=True).start()
+    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
+
+    if bytes_recibidos == tamanio_archivo:
+        print(f"[{fecha}] {ip_origen} <Recibido ./{nombre_archivo} de {usuario}>")
+    else:
+        print(f"[{fecha}] {ip_origen} <Error Recibiendo Archivo de {usuario}>")
+
+
+def parsear(texto):
+    partes = texto.split(" ", 1)
+
+    if len(partes) < 2:
+        return None, None, None
+
+    destino = partes[0]
+    resto = partes[1]
+
+    if resto.startswith("&file"):
+        file_partes = resto.split(" ", 2)
+
+        if len(file_partes) < 2:
+            return destino, None, None
+
+        path = file_partes[1]
+        return destino, "&file", path
+
+    return destino, resto, None
+
+
+def escucha_udp_broadcast(host, port, nombre_usuario):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((host, port))
 
     while True:
-        entrada = input()
-
-        if " " not in entrada:
-            continue
-
-        destino, contenido = entrada.split(" ", 1)
-
-        broadcast = destino == "*"
-
-        # broadcast
-        if broadcast:
-            destino = "255.255.255.255"
-        else:
-            try:
-                destino = socket.gethostbyname(destino)
-            except socket.gaierror:
-                print(" Error: Host no encontrado")
-                continue
+        manejar_udp(sock, nombre_usuario)
 
 
-        # archivo
-        if contenido.startswith("&file"):
-            partes = contenido.split(" ", 1)
+def escucha_tcp(host, port, nombre_usuario):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((host, port))
+    sock.listen()
 
-            if len(partes) < 2:
-                print("Falta path")
-                continue
+    while True:
+        conn, addr = sock.accept()
+        threading.Thread(target=manejar_tcp, args=(conn,), daemon=True).start()
 
-            path = partes[1]
-            if not os.path.exists(path):
-                print("Archivo no encontrado")
-                continue
 
-            nombre = os.path.basename(path)
-            tamanio = os.path.getsize(path)
+def manejar_udp(sock, nombre_usuario_local):
+    datos, addr = sock.recvfrom(1024)
+    texto = datos.decode("utf-8").removesuffix("\r\n")
 
-            if broadcast:
-                archivos_broadcast[nombre] = path
-                socket_udp.sendto(f"FILE|{usuario}|{nombre}|{tamanio}".encode('utf-8'), (destino, puerto))
-            else:
-                enviar_archivo(usuario, destino, puerto, path, tamanio)
-        # mensaje normal
-        else:
-            if len(contenido) > MAX_LARGO_MENSAJE:
-                print("Mensaje demasiado largo")
-                continue
+    if not texto.startswith("BROADCAST|"):
+        return
 
-            socket_udp.sendto(f"MSG|{usuario}|{contenido}".encode('utf-8'), (destino, puerto))
+    texto = texto.removeprefix("BROADCAST|", "")
+    partes = texto.split("|")
+    tipo = partes[0]
+    if tipo == "MENSAJE":
+        nombre_usuario = partes[1]
+        mensaje = partes[2]
+        recibir_mensaje_udp_broadcast(addr[0], nombre_usuario, mensaje)
+    elif tipo == "ARCHIVO":
+        nombre_usuario = partes[1]
+        ruta_archivo = partes[2]
+
+        if (nombre_usuario_local == nombre_usuario):
+            return
+
+        tcp_sock = conectar_tcp(addr[0], args.puerto)
+        if not tcp_sock:
+            return
+
+        tcp_sock.sendall(f"PEDIR_ARCHIVO|{nombre_usuario}|{ruta_archivo}\r\n".encode('utf-8'))
+        manejar_tcp(tcp_sock)
+
+
+def manejar_tcp(sock):
+    buffer = b""
+
+    respuesta, buffer = recibir_linea_crlf(buffer, sock)
+
+    partes = respuesta.split("|")
+    tipo = partes[0]
+    if tipo == "MENSAJE":
+        nombre_usuario = partes[1]
+        mensaje = partes[2]
+        recibir_mensaje_tcp(sock, nombre_usuario, mensaje)
+    elif tipo == "ARCHIVO":
+        nombre_usuario = partes[1]
+        nombre_archivo = partes[2]
+        tamanio_archivo = int(partes[3])
+        recibir_archivo_tcp(sock, nombre_usuario, nombre_archivo, tamanio_archivo, buffer)
+    elif tipo == "PEDIR_ARCHIVO":
+        nombre_usuario = partes[1]
+        ruta_archivo = partes[2]
+        enviar_archivo_tcp(sock, nombre_usuario, ruta_archivo)
+
+
+def manejar_cliente(nombre_usuario):
+    entrada = input()
+
+    ip_destino, contenido, ruta_archivo = parsear(entrada)
+
+    if not ip_destino or not contenido:
+        return
+
+    if contenido.startswith("&file"):
+        if not ruta_archivo:
+            print("Error: Falta path")
+            return
+
+        if not os.path.exists(ruta_archivo):
+            print("Error: Archivo no encontrado")
+            return
+
+        if ip_destino == "*":
+            broad_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            broad_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+            enviar_archivo_udp_broadcast(broad_sock, nombre_usuario, ruta_archivo)
+            return
+
+        sock = conectar_tcp(ip_destino, args.puerto)
+        if not sock:
+            return
+
+        enviar_archivo_tcp(sock, nombre_usuario, ruta_archivo)
+    else:
+        if len(contenido) > MAX_LARGO_MENSAJE:
+            print("Error: Mensaje demasiado largo")
+            return
+
+        if ip_destino == "*":
+            broad_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            broad_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+
+            enviar_mensaje_udp_broadcast(broad_sock, nombre_usuario, contenido)
+            return
+
+        sock = conectar_tcp(ip_destino, args.puerto)
+        if not sock:
+            return
+
+        enviar_mensaje_tcp(sock, nombre_usuario, contenido)
+
+
+def iniciar_servidor(host, tcp_port, udp_port, nombre_usuario):
+    threading.Thread(target=escucha_tcp, args=(host, tcp_port, nombre_usuario), daemon=True).start()
+    threading.Thread(target=escucha_udp_broadcast, args=(host, udp_port, nombre_usuario), daemon=True).start()
+
+
+def main():
+    nombre_usuario = autenticador()
+    host = "0.0.0.0"
+
+    iniciar_servidor(host, args.puerto, args.puerto, nombre_usuario)
+
+    while True:
+        manejar_cliente(nombre_usuario)
 
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("Cerrando sesión...")
+        print("\nCerrando sesión...")
