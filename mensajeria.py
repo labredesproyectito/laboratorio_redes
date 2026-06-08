@@ -193,7 +193,7 @@ def manejar_udp(sock, nombre_usuario_local):
     if not texto.startswith("BROADCAST|"):
         return
 
-    texto = texto.removeprefix("BROADCAST|", "")
+    texto = texto.removeprefix("BROADCAST|")
     partes = texto.split("|")
     tipo = partes[0]
     if tipo == "MENSAJE":
