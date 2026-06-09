@@ -29,7 +29,6 @@ def recibir_linea_crlf(buffer, sock):
     linea, resto = buffer.split(b"\r\n", 1)
     return linea.decode('utf-8'), resto
 
-
 def autenticador():
     nombre = input("Usuario: ")
     contrasenia = getpass("Clave: ")
@@ -59,7 +58,6 @@ def autenticador():
         sock.close()
         exit()
 
-
 def conectar_tcp(ip, puerto):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -73,33 +71,27 @@ def conectar_tcp(ip, puerto):
         sock.close()
         return False
 
-
 def enviar_mensaje_udp_broadcast(sock, nombre_usuario, mensaje):
     sock.sendto(f"BROADCAST|MENSAJE|{nombre_usuario}|{mensaje}\r\n".encode('utf-8'), ("255.255.255.255", args.puerto))
     sock.close()
-
 
 def recibir_mensaje_udp_broadcast(ip_origen, nombre_usuario, mensaje):
     fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
     print(f"[{fecha}] {ip_origen} {nombre_usuario} dice: {mensaje}")
 
-
 def enviar_archivo_udp_broadcast(sock, nombre_usuario, ruta_archivo):
     sock.sendto(f"BROADCAST|ARCHIVO|{nombre_usuario}|{ruta_archivo}\r\n".encode('utf-8'), ("255.255.255.255", args.puerto))
     sock.close()
 
-
 def enviar_mensaje_tcp(sock, nombre_usuario, mensaje):
     sock.sendall(f"MENSAJE|{nombre_usuario}|{mensaje}\r\n".encode('utf-8'))
     sock.close()
-
 
 def recibir_mensaje_tcp(sock, nombre_usuario, mensaje):
     ip_origen, puerto = sock.getpeername()
     fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
     print(f"[{fecha}] {ip_origen} {nombre_usuario} dice: {mensaje}")
     sock.close()
-
 
 def enviar_archivo_tcp(sock, nombre_usuario, path):
     nombre_archivo = os.path.basename(path)
@@ -116,7 +108,6 @@ def enviar_archivo_tcp(sock, nombre_usuario, path):
             sock.sendall(chunk)
 
     sock.close()
-
 
 def recibir_archivo_tcp(sock, usuario, nombre_archivo, tamanio_archivo, resto):
     ip_origen, puerto = sock.getpeername()
@@ -145,7 +136,6 @@ def recibir_archivo_tcp(sock, usuario, nombre_archivo, tamanio_archivo, resto):
     else:
         print(f"[{fecha}] {ip_origen} <Error Recibiendo Archivo de {usuario}>")
 
-
 def parsear(texto):
     partes = texto.split(" ", 1)
 
@@ -166,14 +156,12 @@ def parsear(texto):
 
     return destino, resto, None
 
-
 def escucha_udp_broadcast(host, port, nombre_usuario):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((host, port))
 
     while True:
         manejar_udp(sock, nombre_usuario)
-
 
 def escucha_tcp(host, port, nombre_usuario):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -183,7 +171,6 @@ def escucha_tcp(host, port, nombre_usuario):
     while True:
         conn, addr = sock.accept()
         threading.Thread(target=manejar_tcp, args=(conn,), daemon=True).start()
-
 
 def manejar_udp(sock, nombre_usuario_local):
     datos, addr = sock.recvfrom(1024)
