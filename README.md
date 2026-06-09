@@ -2,13 +2,13 @@
 
 ## Descripción
 
-Tarea obligatoria de redes. 
+Tarea obligatoria de redes.
 Para enviar mensajes a hosts especificos o por broadcast se utiliza el protocolo UDP.
 Para enviar archivos se utiliza el protocolo TCP.
 Para enviar archivos por broadcast primero se envia un mensaje a todos los hots de la red y luego estos le responden al emisor para que este ultimo les envie el archivo.
 
 Hay 2 hilos, uno para el socket UDP y otro para el socket TCP.
-El socket tcp siempre esta listo para aceptar nuevas conexiones 
+El socket tcp siempre esta listo para aceptar nuevas conexiones
 
 ## Requisitos
 
@@ -92,6 +92,16 @@ Ejemplo:
 ```text
 * &file foto.jpg
 ```
+
+## Estado de implementación
+
+- [x] Enviar mensaje (UDP)
+- [x] Enviar broadcast (UDP)
+- [x] Enviar archivo (TCP)
+- [x] Broadcast de archivo (señalización por UDP y transferencia por TCP)
+- [x] Autenticación con servidor (envío de MD5)
+- [x] Recepción y guardado de archivos en directorio actual
+- [ ] Reintentos / confirmación de entrega (no implementado)
 
 ## Formato de mensajes
 

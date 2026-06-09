@@ -15,7 +15,6 @@ args = parser.parse_args()
 
 MAX_LARGO_MENSAJE = 255
 
-
 def recibir_linea_crlf(buffer, sock):
     while True:
         data = sock.recv(1024)
