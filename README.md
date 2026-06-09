@@ -2,24 +2,13 @@
 
 ## Descripción
 
-Proyecto desarrollado para el laboratorio de Redes de Computadoras. Esta aplicación de mensajería implementa comunicación UDP para intercambio de mensajes y archivos, y utiliza TCP para autenticación de usuarios.
+Tarea obligatoria de redes. 
+Para enviar mensajes a hosts especificos o por broadcast se utiliza el protocolo UDP.
+Para enviar archivos se utiliza el protocolo TCP.
+Para enviar archivos por broadcast primero se envia un mensaje a todos los hots de la red y luego estos le responden al emisor para que este ultimo les envie el archivo.
 
-El enfoque principal es presentar:
-
-- Comunicación entre pares con UDP
-- Broadcast en la red local
-- Envío y recepción de archivos
-- Autenticación centralizada con servidor TCP
-- Código simple, claro y fácil de defender
-
-## Características
-
-- Mensajería unicast entre clientes
-- Broadcast de texto y archivos
-- Envío de archivos binarios
-- Recepción de archivos en el directorio local
-- Autenticación mediante servidor externo
-- Soporte multiplataforma: Windows / Linux
+Hay 2 hilos, uno para el socket UDP y otro para el socket TCP.
+El socket tcp siempre esta listo para aceptar nuevas conexiones 
 
 ## Requisitos
 
@@ -36,7 +25,7 @@ python mensajeria.py <puerto_local> <ip_auth> <puerto_auth>
 Ejemplo:
 
 ```bash
-python mensajeria.py 22764 ti.esi.edu.uy 33
+python mensajeria.py 25555 ti.esi.edu.uy 33
 ```
 
 ## Autenticación
@@ -53,7 +42,10 @@ La clave se convierte a MD5 y se envía al servidor de autenticación. Si las cr
 Ejemplo:
 
 ```text
-Bienvenido Nombre_Apellido
+./mensajeria 25555 ti.esi.edu.uy 33
+Usuario: aturing
+Clave: aturing
+Bienvenido Alan_Mathison_Turing
 ```
 
 ## Uso del cliente
@@ -101,32 +93,17 @@ Ejemplo:
 * &file foto.jpg
 ```
 
-## Comandos especiales
-
-```text
-/help
-/exit
-```
-
-- `/help`: muestra instrucciones de uso.
-- `/exit`: cierra la aplicación de forma controlada.
-
 ## Formato de mensajes
 
 El protocolo actual utiliza formatos simples:
 
 - Texto: `MSG|usuario|mensaje`
-- Archivo: `FILE|usuario|nombre|contenido`
+- Archivo: `FILE|usuario|nombre|tamanio`
+- Enviar archivo broadcast mediante TCP: `GET_FILE|usuario|nombre|tamanio`
 
 ## Recepción de archivos
 
 Los archivos recibidos se guardan en el directorio actual.
-
-Para evitar sobrescribir archivos, el programa debería renombrar archivos duplicados como:
-
-- `documento.pdf`
-- `documento_1.pdf`
-- `documento_2.pdf`
 
 ## Tecnologías usadas
 
@@ -139,82 +116,27 @@ Para evitar sobrescribir archivos, el programa debería renombrar archivos dupli
 
 En la implementación actual se reconocen estas limitaciones:
 
-- El archivo se envía en un solo paquete UDP
-- No hay control de pérdida ni reenvío de paquetes
-- No hay validación de integridad de archivos
-- No hay fragmentación para archivos grandes
-- El protocolo es muy básico
-- No existe historial de conversaciones
-- No se maneja una lista de usuarios conectados
-
-## Mejora propuesta para nota 10/10
-
-Para elevar el proyecto hacia una calificación excelente, se recomienda trabajar en los siguientes puntos:
-
-- [ ] Transferencia de archivos robusta
-  - Codificar archivos en Base64 para soportar datos binarios.
-  - Decodificar y escribir contenido binario al recibir.
-
-- [ ] Límite y fragmentación de archivos
-  - Limitar el tamaño máximo de envío a un valor seguro (por ejemplo 50 KB).
-  - O implementar fragmentación para permitir archivos más grandes.
-
-- [ ] Validación de mensajes
-  - Verificar el formato de los paquetes antes de procesarlos.
-  - Evitar errores por paquetes malformados.
-
-- [ ] Comandos de ayuda y salida
-  - Agregar `/help` para mostrar uso y ejemplos.
-  - Agregar `/exit` para una salida ordenada.
-
-- [ ] Evitar sobrescritura de archivos
-  - Generar nombres alternativos cuando un archivo ya exista.
-
-- [ ] Manejo de errores en autenticación
-  - Detectar fallos de conexión, timeout y respuestas inválidas.
-  - Mostrar mensajes claros al usuario.
-
-- [ ] Validación de longitud de mensajes en recepción
-  - No solo validar al enviar, también al recibir.
-
-- [ ] Manejo de excepciones específico
-  - Reemplazar `except:` con excepciones concretas.
-  - Facilitar la detección de problemas.
-
-- [x] Documentación y comentarios
-  - Documentar el flujo de trabajo y las funciones clave.
-  - Añadir comentarios que expliquen decisiones de diseño.
-
-- [ ] Pruebas completas
-  - Mensajes unicast y broadcast.
-  - Envío y recepción de archivos.
-  - Autenticación correcta e incorrecta.
-  - Uso simultáneo por varios usuarios.
+- Los mensajes son enviados por UDP, por lo cual pueden perderse y no llegar correctamente. Es una desicion asumida para el programa
 
 ## Estructura del programa
 
 El archivo principal `mensajeria.py` contiene:
 
-- `autenticar()`: maneja la conexión y validación de credenciales con el servidor TCP.
-- `receptor()`: escucha paquetes UDP en un hilo independiente.
-- `enviar_mensaje()`: envía mensajes de texto a un destino UDP.
-- `enviar_archivo()`: envía archivos al destino UDP.
+- `recibir_linea_crlf()`: Recibe datos via sock hasta recibir el delimitador "\r\n", lo reensambla y lo retorna.
+- `recibir_cabecera_archivo()`: Recibe datos via sock hasta encontrar el delimitador "\r\n", reensambla la cabecera del archivo y devuelve también los bytes restantes que ya pueden pertenecer al contenido del archivo.
+- `autenticar()`: Maneja la conexión y validación de credenciales con el servidor TCP.
+- `receptor_udp()`: escucha paquetes UDP en un hilo independiente.
+- `receptor_tcp()`: escucha paquetes TCP en un hilo independiente.
+- `recibir_archivo()`: recibe archivos mediante socket TCP y revisa que los bytes recibidos sean iguales a los bytes esperados del archivo
+- `enviar_archivo()`: envía archivos al destino mediante TCP, lee el archivo en chunks de 64 KiB y los envia por partes.
 - `main()`: controla el bucle principal y el flujo del cliente.
 
 ## Decisiones de diseño
 
-- Separar autenticación (TCP) y mensajería (UDP) facilita control y depuración.
+- Separar autenticación/archivos (TCP) y mensajería (UDP) facilita control y depuración.
 - Preferir un protocolo simple reduce la complejidad para un laboratorio.
 - Usar hilos permite recibir mensajes mientras el usuario escribe.
 - Evitar dependencias externas mantiene el proyecto portable.
-
-## Pruebas recomendadas
-
-- Autenticación exitosa con usuario y clave válidos.
-- Autenticación fallida con credenciales inválidas.
-- Mensajes unicast entre dos instancias del cliente.
-- Broadcast de texto y archivo a múltiples receptores.
-- Recepción de un archivo con el mismo nombre varias veces.
 
 ## Integrantes
 
@@ -227,7 +149,3 @@ Nombre - CI
 ## Observaciones
 
 El proyecto fue desarrollado intentando priorizar simplicidad y claridad del código por encima de optimizaciones o arquitecturas complejas.
-
-## Conclusión
-
-Este proyecto es una base sólida para el laboratorio de redes. Con las mejoras propuestas se puede lograr un sistema más robusto, seguro y fácil de defender, acercándolo mucho a una nota 10/10.
