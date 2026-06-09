@@ -64,8 +64,8 @@ def autenticador():
 def conectar_tcp(ip, puerto):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    ip = socket.gethostbyname(ip)
     try:
+        ip = socket.gethostbyname(ip)
         sock.connect((ip, puerto))
         return sock
 
