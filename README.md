@@ -151,9 +151,9 @@ El archivo principal `mensajeria.py` contiene:
 ## Integrantes
 
 ```text
-Nombre - CI
-Nombre - CI
-Nombre - CI
+Cristian Barreiro
+Rafael Padrón
+Mateo Araújo
 ```
 
 ## Observaciones
