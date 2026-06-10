@@ -3,7 +3,7 @@
 ## Descripción
 
 Tarea obligatoria de redes.
-Para enviar mensajes a hosts especificos o por broadcast se utiliza el protocolo UDP.
+Para enviar mensajes a hosts especificos se utiliza TCP y para enviar mensajes por broadcast se utiliza UDP.
 Para enviar archivos se utiliza el protocolo TCP.
 Para enviar archivos por broadcast primero se envia un mensaje a todos los hots de la red y luego estos le responden al emisor para que este ultimo les envie el archivo.
 
@@ -95,14 +95,14 @@ Ejemplo:
 
 ## Estado de implementación
 
-- [x] Enviar mensaje (UDP)
+- [x] Enviar mensaje (TCP)
 - [x] Enviar broadcast (UDP)
 - [x] Enviar archivo (TCP)
 - [x] Broadcast de archivo (señalización por UDP y transferencia por TCP)
 - [x] Autenticación con servidor (envío de MD5)
 - [x] Recepción y guardado de archivos en directorio actual
 - [x] Reintentos / confirmación de entrega
-- [ ] Interfaz gráfica de usuario (GUI)
+- [ ] Interfaz gráfica de usuario (GUI) (no lo pide la letra del oblitatorio)
 
 ## Formato de mensajes
 
@@ -124,12 +124,6 @@ Los archivos recibidos se guardan en el directorio actual.
 - socket
 - threading
 - hashlib
-
-## Limitaciones actuales
-
-En la implementación actual se reconocen estas limitaciones:
-
-- Los mensajes son enviados por UDP, por lo cual pueden perderse y no llegar correctamente. Es una desicion asumida para el programa
 
 ## Estructura del programa
 
