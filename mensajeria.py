@@ -366,3 +366,7 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         print("\nCerrando sesión...")
+
+##Mateo Araujo 5172965-9
+##rafael padron 55884116-0
+##Cristian Barreiro 5168690-4
