@@ -1,0 +1,70 @@
+Pruebas para mensajeria.py
+
+1) Configuración inicial en ambas laptops
+
+Laptop 1 (receptor):
+python mensajeria.py 25555 <ip_auth> <puerto_auth>
+
+Laptop 2 (emisor):
+python mensajeria.py 25555 <ip_auth> <puerto_auth>
+
+Ejemplo con servidor de autenticación 192.168.1.100 puerto 33:
+python mensajeria.py 25555 192.168.1.100 33
+Ejemplo con el servidor de la UTU:
+python mensajeria.py 25555 ti.esi.edu.uy 33
+
+2) Probar envío directo de mensaje TCP
+
+En la laptop emisor, escribe:
+192.168.1.10 Hola desde la laptop 2
+
+Donde 192.168.1.10 es la IP de la laptop receptora.
+
+Resultados esperados:
+- Emisor: Mensaje entregado a 192.168.1.10
+- Receptor: [fecha] 192.168.1.10 <usuario> dice: Hola desde la laptop 2
+
+
+3) Probar envío directo de archivo TCP
+
+En la laptop emisor, escribe:
+192.168.1.10 &file C:\ruta\al\archivo.txt
+
+Resultados esperados:
+- Emisor: Archivo entregado a 192.168.1.10
+- Receptor: [fecha] 192.168.1.10 <Recibido ./archivo.txt de usuario>
+- El archivo queda guardado en el directorio actual del receptor
+
+
+4) Probar broadcast UDP de mensaje
+
+En cualquiera de las dos laptops, escribe:
+* Hola a todos
+
+Resultados esperados:
+- Todos los clientes en la red que estén ejecutando mensajeria.py reciben el mensaje por UDP
+
+
+5) Probar broadcast UDP de archivo
+
+En cualquiera de las dos laptops, escribe:
+* &file C:\ruta\al\archivo.txt
+
+Resultados esperados:
+- Todos los hosts reciben la señal de broadcast
+- Los hosts que responden al broadcast solicitan el archivo por TCP
+- El archivo se recibe en cada host y se guarda en el directorio actual
+
+
+6) Verificaciones de reintentos y confirmación
+
+- Si la conexión TCP falla, el emisor intentará hasta 3 veces.
+- Si no recibe ACK, mostrará un mensaje de reintento y luego un error final.
+- La confirmación TCP se realiza con: ACK|OK o ACK|ERROR
+
+
+Notas
+
+- Usa IPs reales de tus laptops en vez de 192.168.1.10.
+- Asegúrate de que el puerto 25555 esté libre en ambos equipos.
+- El programa usa el mismo puerto para escuchar TCP y UDP.

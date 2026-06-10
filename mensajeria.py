@@ -14,6 +14,10 @@ parser.add_argument("portAuth", type=int)
 args = parser.parse_args()
 
 MAX_LARGO_MENSAJE = 255
+MAX_REINTENTOS_TCP = 3
+ACK_OK = "ACK|OK"
+ACK_ERROR = "ACK|ERROR"
+ACK_TIMEOUT = 3
 
 def recibir_linea_crlf(buffer, sock):
     while True:
@@ -79,19 +83,27 @@ def recibir_mensaje_udp_broadcast(ip_origen, nombre_usuario, mensaje):
     fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
     print(f"[{fecha}] {ip_origen} {nombre_usuario} dice: {mensaje}")
 
+def enviar_ack_tcp(sock, exito=True):
+    codigo = ACK_OK if exito else ACK_ERROR
+    sock.sendall((codigo + "\r\n").encode('utf-8'))
+
+def recibir_ack_tcp(sock):
+    buffer = b""
+    sock.settimeout(ACK_TIMEOUT)
+    try:
+        respuesta, buffer = recibir_linea_crlf(buffer, sock)
+        return respuesta == ACK_OK
+    except socket.timeout:
+        return False
+    finally:
+        sock.settimeout(None)
+
 def enviar_archivo_udp_broadcast(sock, nombre_usuario, ruta_archivo):
     sock.sendto(f"BROADCAST|ARCHIVO|{nombre_usuario}|{ruta_archivo}\r\n".encode('utf-8'), ("255.255.255.255", args.puerto))
     sock.close()
 
 def enviar_mensaje_tcp(sock, nombre_usuario, mensaje):
     sock.sendall(f"MENSAJE|{nombre_usuario}|{mensaje}\r\n".encode('utf-8'))
-    sock.close()
-
-def recibir_mensaje_tcp(sock, nombre_usuario, mensaje):
-    ip_origen, puerto = sock.getpeername()
-    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
-    print(f"[{fecha}] {ip_origen} {nombre_usuario} dice: {mensaje}")
-    sock.close()
 
 def enviar_archivo_tcp(sock, nombre_usuario, path):
     nombre_archivo = os.path.basename(path)
@@ -107,6 +119,66 @@ def enviar_archivo_tcp(sock, nombre_usuario, path):
 
             sock.sendall(chunk)
 
+
+def enviar_mensaje_tcp_con_reintentos(ip, puerto, nombre_usuario, mensaje):
+    for intento in range(1, MAX_REINTENTOS_TCP + 1):
+        sock = conectar_tcp(ip, puerto)
+        if not sock:
+            print(f"Reintento {intento}/{MAX_REINTENTOS_TCP} fallido: no se pudo conectar con {ip}:{puerto}")
+            continue
+
+        try:
+            enviar_mensaje_tcp(sock, nombre_usuario, mensaje)
+            if recibir_ack_tcp(sock):
+                print(f"Mensaje entregado a {ip}")
+                return True
+            else:
+                print(f"Reintento {intento}/{MAX_REINTENTOS_TCP}: no se recibió confirmación de entrega")
+        except Exception as e:
+            print(f"Error enviando mensaje a {ip}: {e}")
+        finally:
+            try:
+                sock.close()
+            except:
+                pass
+
+    print("Error: No se pudo entregar el mensaje después de varios intentos.")
+    return False
+
+
+def enviar_archivo_tcp_con_reintentos(ip, puerto, nombre_usuario, path):
+    for intento in range(1, MAX_REINTENTOS_TCP + 1):
+        sock = conectar_tcp(ip, puerto)
+        if not sock:
+            print(f"Reintento {intento}/{MAX_REINTENTOS_TCP} fallido: no se pudo conectar con {ip}:{puerto}")
+            continue
+
+        try:
+            enviar_archivo_tcp(sock, nombre_usuario, path)
+            if recibir_ack_tcp(sock):
+                print(f"Archivo entregado a {ip}")
+                return True
+            else:
+                print(f"Reintento {intento}/{MAX_REINTENTOS_TCP}: no se recibió confirmación de entrega")
+        except Exception as e:
+            print(f"Error enviando archivo a {ip}: {e}")
+        finally:
+            try:
+                sock.close()
+            except:
+                pass
+
+    print("Error: No se pudo entregar el archivo después de varios intentos.")
+    return False
+
+def recibir_mensaje_tcp(sock, nombre_usuario, mensaje):
+    ip_origen, puerto = sock.getpeername()
+    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
+    print(f"[{fecha}] {ip_origen} {nombre_usuario} dice: {mensaje}")
+    try:
+        enviar_ack_tcp(sock, exito=True)
+    except Exception:
+        pass
     sock.close()
 
 def recibir_archivo_tcp(sock, usuario, nombre_archivo, tamanio_archivo, resto):
@@ -127,11 +199,17 @@ def recibir_archivo_tcp(sock, usuario, nombre_archivo, tamanio_archivo, resto):
             f.write(datos)
             bytes_recibidos += len(datos)
 
+    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
+    exito = bytes_recibidos == tamanio_archivo
+
+    try:
+        enviar_ack_tcp(sock, exito=exito)
+    except Exception:
+        pass
+
     sock.close()
 
-    fecha = datetime.now().strftime("%Y.%m.%d %H:%M")
-
-    if bytes_recibidos == tamanio_archivo:
+    if exito:
         print(f"[{fecha}] {ip_origen} <Recibido ./{nombre_archivo} de {usuario}>")
     else:
         print(f"[{fecha}] {ip_origen} <Error Recibiendo Archivo de {usuario}>")
@@ -221,6 +299,11 @@ def manejar_tcp(sock):
         nombre_usuario = partes[1]
         ruta_archivo = partes[2]
         enviar_archivo_tcp(sock, nombre_usuario, ruta_archivo)
+        if recibir_ack_tcp(sock):
+            print(f"Confirmación de entrega de archivo enviada por {nombre_usuario}")
+        else:
+            print(f"No se recibió confirmación de entrega de archivo de {nombre_usuario}")
+        sock.close()
 
 
 def manejar_cliente(nombre_usuario):
@@ -247,11 +330,7 @@ def manejar_cliente(nombre_usuario):
             enviar_archivo_udp_broadcast(broad_sock, nombre_usuario, ruta_archivo)
             return
 
-        sock = conectar_tcp(ip_destino, args.puerto)
-        if not sock:
-            return
-
-        enviar_archivo_tcp(sock, nombre_usuario, ruta_archivo)
+        enviar_archivo_tcp_con_reintentos(ip_destino, args.puerto, nombre_usuario, ruta_archivo)
     else:
         if len(contenido) > MAX_LARGO_MENSAJE:
             print("Error: Mensaje demasiado largo")
@@ -264,11 +343,7 @@ def manejar_cliente(nombre_usuario):
             enviar_mensaje_udp_broadcast(broad_sock, nombre_usuario, contenido)
             return
 
-        sock = conectar_tcp(ip_destino, args.puerto)
-        if not sock:
-            return
-
-        enviar_mensaje_tcp(sock, nombre_usuario, contenido)
+        enviar_mensaje_tcp_con_reintentos(ip_destino, args.puerto, nombre_usuario, contenido)
 
 
 def iniciar_servidor(host, tcp_port, udp_port, nombre_usuario):

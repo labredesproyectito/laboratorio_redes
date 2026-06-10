@@ -101,15 +101,18 @@ Ejemplo:
 - [x] Broadcast de archivo (señalización por UDP y transferencia por TCP)
 - [x] Autenticación con servidor (envío de MD5)
 - [x] Recepción y guardado de archivos en directorio actual
-- [ ] Reintentos / confirmación de entrega (no implementado)
+- [x] Reintentos / confirmación de entrega
+- [ ] Interfaz gráfica de usuario (GUI)
 
 ## Formato de mensajes
 
 El protocolo actual utiliza formatos simples:
 
-- Texto: `MSG|usuario|mensaje`
-- Archivo: `FILE|usuario|nombre|tamanio`
-- Enviar archivo broadcast mediante TCP: `GET_FILE|usuario|nombre|tamanio`
+- UDP broadcast texto: `BROADCAST|MENSAJE|usuario|mensaje`
+- UDP broadcast archivo: `BROADCAST|ARCHIVO|usuario|ruta_archivo`
+- TCP directo texto: `MENSAJE|usuario|mensaje`
+- TCP directo archivo: `ARCHIVO|usuario|nombre_archivo|tamanio`
+- Confirmación TCP: `ACK|OK` / `ACK|ERROR`
 
 ## Recepción de archivos
 
