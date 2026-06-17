@@ -130,23 +130,35 @@ Los archivos recibidos se guardan en el directorio actual.
 El archivo principal `mensajeria.py` contiene las siguientes partes principales:
 
 - `recibir_linea_crlf(buffer, sock)`: lee datos de un socket TCP hasta encontrar el delimitador `\r\n`, devuelve la línea completa y los bytes restantes.
-- `autenticador()`: solicita usuario y clave, calcula el MD5, se conecta al servidor de autenticación y valida las credenciales.
-- `conectar_tcp(ip, puerto)`: convierte hostname a dirección IP y abre una conexión TCP hacia el destino.
+- `autenticador()`: solicita usuario y clave, calcula el hash MD5 de la contraseña, se conecta al servidor de autenticación y valida las credenciales.
+- `conectar_tcp(ip, puerto)`: resuelve el hostname a dirección IP y abre una conexión TCP hacia el destino.
 - `enviar_mensaje_udp_broadcast(sock, nombre_usuario, mensaje)`: envía un mensaje UDP broadcast usando el formato `BROADCAST|MENSAJE|...`.
-- `enviar_archivo_udp_broadcast(sock, nombre_usuario, ruta_archivo)`: envía la señal de broadcast para pedir transferencia de archivo a todos los hosts.
-- `enviar_mensaje_tcp(sock, nombre_usuario, mensaje)`: envía un mensaje directo por TCP al servidor/destino.
-- `enviar_archivo_tcp(sock, nombre_usuario, path)`: envía la cabecera de archivo y a continuación los bytes del archivo por TCP.
 - `recibir_mensaje_udp_broadcast(ip_origen, nombre_usuario, mensaje)`: muestra en pantalla un mensaje recibido por UDP broadcast.
-- `recibir_mensaje_tcp(sock, nombre_usuario, mensaje)`: muestra en pantalla un mensaje recibido por TCP.
-- `recibir_archivo_tcp(sock, usuario, nombre_archivo, tamanio_archivo, resto)`: recibe un archivo por TCP y lo guarda en disco, manejando bytes restantes que ya llegaron junto a la cabecera.
-- `parsear(texto)`: interpreta la entrada del usuario y distingue destino, comando `&file` y ruta de archivo.
+- `enviar_archivo_udp_broadcast(sock, nombre_usuario, ruta_archivo)`: envía una señal UDP broadcast notificando que un archivo está disponible para ser solicitado.
+- `enviar_mensaje_tcp(sock, nombre_usuario, mensaje)`: envía un mensaje directo por TCP utilizando el formato `MENSAJE|...`.
+- `enviar_archivo_tcp(sock, nombre_usuario, path)`: envía la cabecera del archivo y posteriormente los bytes del archivo por TCP en bloques de 4096 bytes.
+- `enviar_ack_tcp(sock, exito=True)`: envía una confirmación de recepción (`ACK|OK` o `ACK|ERROR`) a través de TCP.
+- `recibir_ack_tcp(sock)`: espera una confirmación TCP durante un tiempo limitado y devuelve si fue recibida correctamente.
+- `enviar_mensaje_tcp_con_reintentos(ip, puerto, nombre_usuario, mensaje)`: intenta enviar un mensaje TCP varias veces hasta recibir confirmación de entrega o agotar los reintentos.
+- `enviar_archivo_tcp_con_reintentos(ip, puerto, nombre_usuario, path)`: intenta enviar un archivo TCP varias veces hasta recibir confirmación de entrega o agotar los reintentos.
+- `recibir_mensaje_tcp(sock, nombre_usuario, mensaje)`: muestra en pantalla un mensaje recibido por TCP y envía una confirmación de recepción.
+- `recibir_archivo_tcp(sock, usuario, nombre_archivo, tamanio_archivo, resto)`: recibe un archivo por TCP, lo guarda en disco, verifica que se haya recibido completo y envía una confirmación.
+- `parsear(texto)`: interpreta la entrada del usuario y distingue destino, mensajes, comando `&file` y ruta de archivo.
 - `escucha_udp_broadcast(host, port, nombre_usuario)`: mantiene un hilo escuchando paquetes UDP en el puerto local.
-- `escucha_tcp(host, port, nombre_usuario)`: mantiene un hilo escuchando conexiones TCP entrantes y delegando cada conexión a `manejar_tcp`.
-- `manejar_udp(sock, nombre_usuario_local)`: procesa paquetes UDP recibidos y decide si son mensajes o solicitudes de transferencia de archivo.
+- `escucha_tcp(host, port, nombre_usuario)`: mantiene un hilo escuchando conexiones TCP entrantes y delega cada conexión a `manejar_tcp`.
+- `manejar_udp(sock, nombre_usuario_local)`: procesa paquetes UDP recibidos y decide si corresponden a mensajes broadcast o solicitudes de transferencia de archivo.
 - `manejar_tcp(sock)`: procesa la primera línea TCP recibida, identifica el tipo de operación (`MENSAJE`, `ARCHIVO`, `PEDIR_ARCHIVO`) y llama a la función apropiada.
-- `manejar_cliente(nombre_usuario)`: lee la entrada del usuario desde teclado y envía mensajes o archivos según la sintaxis.
-- `iniciar_servidor(host, tcp_port, udp_port, nombre_usuario)`: arranca los hilos de escucha TCP y UDP.
-- `main()`: inicia la autenticación y luego ejecuta el bucle principal de lectura de comandos.
+- `manejar_cliente(nombre_usuario)`: lee la entrada del usuario desde teclado y envía mensajes o archivos según la sintaxis utilizada.
+- `iniciar_servidor(host, tcp_port, udp_port, nombre_usuario)`: inicia los hilos de escucha TCP y UDP para atender conexiones y mensajes entrantes simultáneamente.
+- `main()`: realiza la autenticación, inicia los servicios de red y ejecuta el ciclo principal de atención al usuario.
+
+### Constantes principales
+
+- `MAX_LARGO_MENSAJE`: longitud máxima permitida para un mensaje.
+- `MAX_REINTENTOS_TCP`: cantidad máxima de reintentos para envíos TCP que requieren confirmación.
+- `ACK_OK`: confirmación de recepción exitosa.
+- `ACK_ERROR`: confirmación de recepción con error.
+- `ACK_TIMEOUT`: tiempo máximo de espera de una confirmación TCP.
 
 ## Decisiones de diseño
 
